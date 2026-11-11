@@ -34,18 +34,9 @@ fi
 
 # 2. Inyectar ruta del SDK de Android
 echo "sdk.dir=$HOME/Android/Sdk" > local.properties
-# LOG: PatchAppJava21To17 toolchain and source release downgrade for silicion limits
+# LOG: PatchAppJava21To17 brute-force byte replacement for silicion limits
 if [ -f "app/build.gradle" ]; then
-    sed -i 's/VERSION_21/VERSION_17/g' "app/build.gradle"
-    sed -i 's/JavaVersion.VERSION_21/JavaVersion.VERSION_17/g' "app/build.gradle"
-    sed -i 's/compatibility = 21/compatibility = 17/g' "app/build.gradle"
-    sed -i 's/sourceCompatibility = 21/sourceCompatibility = 17/g' "app/build.gradle"
-    sed -i 's/targetCompatibility = 21/targetCompatibility = 17/g' "app/build.gradle"
-    sed -i 's/java 21/java 17/gi' "app/build.gradle"
-    sed -i 's/jvmTarget = "21"/jvmTarget = "17"/g' "app/build.gradle"
-    sed -i 's/JavaLanguageVersion.of(21)/JavaLanguageVersion.of(17)/g' "app/build.gradle"
-    sed -i 's/release 21/release 17/g' "app/build.gradle"
-    sed -i 's/release = 21/release = 17/g' "app/build.gradle"
+    sed -i 's/21/17/g' "app/build.gradle"
 fi
 
 # 3. Forzar el uso de Gradle 8.13
