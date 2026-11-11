@@ -16,15 +16,11 @@ dependencyResolutionManagement {
 rootProject.name = "centiclock"
 include ':app'
 
-def capacitorAndroidDir = new File('node_modules/@capacitor/android')
-if (capacitorAndroidDir.exists()) {
-    include ':capacitor-android'
-    project(':capacitor-android').projectDir = capacitorAndroidDir
+// Carga el archivo oficial de configuración de Capacitor para enlazar :capacitor-android sin errores
+def capacitorSettingsFile = new File('node_modules/@capacitor/android/capacitor.settings.gradle')
+if (capacitorSettingsFile.exists()) {
+    apply from: capacitorSettingsFile
 } else {
-    // Fallback por si la estructura usa la ruta nativa estándar
-    def nestedCapDir = new File('android/capacitor-android')
-    if (nestedCapDir.exists()) {
-        include ':capacitor-android'
-        project(':capacitor-android').projectDir = nestedCapDir
-    }
+    include ':capacitor-android'
+    project(':capacitor-android').projectDir = new File('node_modules/@capacitor/android')
 }

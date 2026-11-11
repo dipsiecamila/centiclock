@@ -42,13 +42,13 @@ if [ -f "$WRAPPER_PROPERTIES" ]; then
     sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip|' "$WRAPPER_PROPERTIES"
 fi
 
-# 4. Asegurar que las dependencias de Capacitor existan localmente e inicializar la plataforma nativa
+# 4. Asegurar dependencias y entorno nativo de Capacitor
 echo "⚙️ Instalando dependencias de Capacitor..."
 npm install 2>/dev/null || true
 npm install @capacitor/android @capacitor/cli 2>/dev/null || true
 
-# 5. Crear un settings.gradle autocontenido que resuelva la ruta de capacitor-android sin depender de rutas externas rotas
-echo "⚙️ Generando settings.gradle autocontenido..."
+# 5. Generar settings.gradle utilizando la directiva nativa de Capacitor que espera app/build.gradle
+echo "⚙️ Configurando settings.gradle con soporte oficial de Capacitor..."
 cat << 'EOF' > settings.gradle
 pluginManagement {
     repositories {
@@ -68,17 +68,13 @@ dependencyResolutionManagement {
 rootProject.name = "centiclock"
 include ':app'
 
-def capacitorAndroidDir = new File('node_modules/@capacitor/android')
-if (capacitorAndroidDir.exists()) {
-    include ':capacitor-android'
-    project(':capacitor-android').projectDir = capacitorAndroidDir
+// Carga el archivo oficial de configuración de Capacitor para enlazar :capacitor-android sin errores
+def capacitorSettingsFile = new File('node_modules/@capacitor/android/capacitor.settings.gradle')
+if (capacitorSettingsFile.exists()) {
+    apply from: capacitorSettingsFile
 } else {
-    // Fallback por si la estructura usa la ruta nativa estándar
-    def nestedCapDir = new File('android/capacitor-android')
-    if (nestedCapDir.exists()) {
-        include ':capacitor-android'
-        project(':capacitor-android').projectDir = nestedCapDir
-    }
+    include ':capacitor-android'
+    project(':capacitor-android').projectDir = new File('node_modules/@capacitor/android')
 }
 EOF
 
