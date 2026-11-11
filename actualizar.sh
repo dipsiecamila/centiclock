@@ -37,50 +37,20 @@ echo "sdk.dir=$HOME/Android/Sdk" > local.properties
 
 # 3. Forzar el uso de Gradle 8.13
 WRAPPER_PROPERTIES="gradle/wrapper/gradle-wrapper.properties"
-if [ -f "$WRAPPER_PROPERTIES" ];    then
+if [ -f "$WRAPPER_PROPERTIES" ]; then
     echo "⚙️ Actualizando versión de Gradle a 8.13..."
     sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip|' "$WRAPPER_PROPERTIES"
 fi
 
-# 4. Asegurar dependencias de Capacitor dentro de la carpeta del proyecto actual
-if [ ! -d "node_modules/@capacitor/android" ]; then
-    echo "⚙️ Instalando dependencias de Capacitor localmente..."
-    npm install @capacitor/android @capacitor/cli 2>/dev/null || true
+# 4. Instalar dependencias web y sincronizar Capacitor nativamente
+echo "⚙️ Instalando dependencias y sincronizando Capacitor..."
+npm install 2>/dev/null || true
+npx cap sync android 2>/dev/null || true
+
+# 5. Configurar settings.gradle estándar generado por capacitor sync
+if [ -f "android/settings.gradle" ]; then
+    cp android/settings.gradle ./
 fi
-
-# 5. Configurar settings.gradle apuntando a los node_modules locales
-echo "⚙️ Configurando settings.gradle con compatibilidad de repositorios..."
-cat << 'EOF' > settings.gradle
-pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
-}
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
-
-rootProject.name = "centiclock"
-include ':app'
-
-def capacitorAndroidDir = new File('node_modules/@capacitor/android')
-if (capacitorAndroidDir.exists()) {
-    include ':capacitor-android'
-    project(':capacitor-android').projectDir = capacitorAndroidDir
-}
-
-def cordovaPluginsDir = new File('capacitor-cordova-android-plugins')
-if (cordovaPluginsDir.exists()) {
-    include ':capacitor-cordova-android-plugins'
-    project(':capacitor-cordova-android-plugins').projectDir = cordovaPluginsDir
-}
-EOF
 
 # 6. Generar debug.keystore si no existe
 if [ ! -f "debug.keystore" ]; then
