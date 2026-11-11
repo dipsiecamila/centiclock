@@ -42,13 +42,37 @@ if [ -f "$WRAPPER_PROPERTIES" ]; then
     sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip|' "$WRAPPER_PROPERTIES"
 fi
 
-# 4. Asegurar dependencias de Capacitor
-echo "⚙️ Instalando dependencias de Capacitor..."
-npm install 2>/dev/null || true
-npm install @capacitor/android @capacitor/cli 2>/dev/null || true
+# 4. Asegurar dependencias de Capacitor (verificando la subcarpeta real /capacitor)
+CAP_ANDROID_PATH="node_modules/@capacitor/android/capacitor"
+if [ ! -d "$CAP_ANDROID_PATH" ]; then
+    echo "⚙️ Instalando @capacitor/android en $PROYECTO_DIR..."
+    [ ! -f "package.json" ] && npm init -y >/dev/null
+    npm install @capacitor/android @capacitor/core --legacy-peer-deps
+fi
 
-# 5. Configurar settings.gradle incluyendo explícitamente los módulos requeridos por app/build.gradle
-echo "⚙️ Configurando settings.gradle con los módulos nativos..."
+# Verificación dura: si no existe el build.gradle de Capacitor, detenerse aquí con mensaje claro
+if [ ! -f "$CAP_ANDROID_PATH/build.gradle" ]; then
+    echo "❌ ERROR FATAL: No se encontró $CAP_ANDROID_PATH/build.gradle tras npm install."
+    exit 1
+fi
+
+# Crear estructura mínima válida para capacitor-cordova-android-plugins si no existe
+if [ ! -f "capacitor-cordova-android-plugins/build.gradle" ]; then
+    mkdir -p "capacitor-cordova-android-plugins/src/main/java"
+    cat << 'EOF' > capacitor-cordova-android-plugins/build.gradle
+apply plugin: 'com.android.library'
+android {
+    namespace "capacitor.cordova.android.plugins"
+    compileSdk 34
+    defaultConfig {
+        minSdk 22
+    }
+}
+EOF
+fi
+
+# 5. Configurar settings.gradle apuntando a las rutas exactas
+echo "⚙️ Configurando settings.gradle..."
 cat << 'EOF' > settings.gradle
 pluginManagement {
     repositories {
@@ -68,21 +92,11 @@ dependencyResolutionManagement {
 rootProject.name = "centiclock"
 include ':app'
 
-// Incluir capacitor-android si existe
-def capacitorAndroidDir = new File('node_modules/@capacitor/android')
-if (capacitorAndroidDir.exists()) {
-    include ':capacitor-android'
-    project(':capacitor-android').projectDir = capacitorAndroidDir
-}
+include ':capacitor-android'
+project(':capacitor-android').projectDir = new File('node_modules/@capacitor/android/capacitor')
 
-// Incluir capacitor-cordova-android-plugins (crear directorio vacío si no existe para evitar fallos de compilación)
-def cordovaPluginsDir = new File('capacitor-cordova-android-plugins')
-if (!cordovaPluginsDir.exists()) {
-    mkdir 'capacitor-cordova-android-plugins'
-    echo "include ''" > capacitor-cordova-android-plugins/build.gradle
-}
 include ':capacitor-cordova-android-plugins'
-project(':capacitor-cordova-android-plugins').projectDir = cordovaPluginsDir
+project(':capacitor-cordova-android-plugins').projectDir = new File('capacitor-cordova-android-plugins')
 EOF
 
 # 6. Generar debug.keystore si no existe
@@ -93,13 +107,25 @@ fi
 
 # 7. Generar gradlew si no existe o actualizar permisos
 if [ ! -f "gradlew" ]; then
-    echo "⚙️  Generando wrapper de Gradle..."
+    echo "⚙️ Generando wrapper de Gradle..."
     gradle wrapper || true
 fi
 
 chmod +x gradlew 2>/dev/null || true
 
-# 8. Sincronizar con Git / GitHub apuntando al repositorio centiclock
+# 8. Evitar subir node_modules y carpetas de compilación pesadas a GitHub
+if [ ! -f ".gitignore" ]; then
+    cat << 'EOF' > .gitignore
+node_modules/
+.gradle/
+build/
+app/build/
+local.properties
+*.keystore
+EOF
+fi
+
+# 9. Sincronizar con Git / GitHub apuntando al repositorio centiclock
 if [ ! -d ".git" ]; then
     echo "🌱 Inicializando repositorio de Git..."
     git init
@@ -113,13 +139,13 @@ else
     git push origin master || git push origin main || true
 fi
 
-# 9. Desinstalar versión anterior en el Pixel 7a
+# 10. Desinstalar versión anterior en el Pixel 7a
 echo "🧹 Limpiando versión anterior en el Pixel 7a..."
 if [ -f "$ADB_BIN" ]; then
     "$ADB_BIN" uninstall com.aistudio.centiclock 2>/dev/null || true
 fi
 
-# 10. Compilar e instalar en el Pixel 7a
+# 11. Compilar e instalar en el Pixel 7a
 echo "📱 Compilando e instalando en tu Pixel 7a..."
 ./gradlew installDebug
 

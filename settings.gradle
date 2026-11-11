@@ -16,18 +16,8 @@ dependencyResolutionManagement {
 rootProject.name = "centiclock"
 include ':app'
 
-// Incluir capacitor-android si existe
-def capacitorAndroidDir = new File('node_modules/@capacitor/android')
-if (capacitorAndroidDir.exists()) {
-    include ':capacitor-android'
-    project(':capacitor-android').projectDir = capacitorAndroidDir
-}
+include ':capacitor-android'
+project(':capacitor-android').projectDir = new File('node_modules/@capacitor/android/capacitor')
 
-// Incluir capacitor-cordova-android-plugins (crear directorio vacío si no existe para evitar fallos de compilación)
-def cordovaPluginsDir = new File('capacitor-cordova-android-plugins')
-if (!cordovaPluginsDir.exists()) {
-    mkdir 'capacitor-cordova-android-plugins'
-    echo "include ''" > capacitor-cordova-android-plugins/build.gradle
-}
 include ':capacitor-cordova-android-plugins'
-project(':capacitor-cordova-android-plugins').projectDir = cordovaPluginsDir
+project(':capacitor-cordova-android-plugins').projectDir = new File('capacitor-cordova-android-plugins')
