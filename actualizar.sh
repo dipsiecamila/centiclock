@@ -49,6 +49,13 @@ if [ ! -d "$CAP_ANDROID_PATH" ]; then
     [ ! -f "package.json" ] && npm init -y >/dev/null
     npm install @capacitor/android @capacitor/core --legacy-peer-deps
 fi
+# LOG: PatchJava21To17 compatibility downgrade for silicion limits
+if [ -f "$CAP_ANDROID_PATH/build.gradle" ]; then
+    sed -i 's/VERSION_21/VERSION_17/g' "$CAP_ANDROID_PATH/build.gradle"
+    sed -i 's/compatibility = 21/compatibility = 17/g' "$CAP_ANDROID_PATH/build.gradle"
+    sed -i 's/sourceCompatibility = 21/sourceCompatibility = 17/g' "$CAP_ANDROID_PATH/build.gradle"
+    sed -i 's/targetCompatibility = 21/targetCompatibility = 17/g' "$CAP_ANDROID_PATH/build.gradle"
+fi
 
 # Verificación dura: si no existe el build.gradle de Capacitor, detenerse aquí con mensaje claro
 if [ ! -f "$CAP_ANDROID_PATH/build.gradle" ]; then
