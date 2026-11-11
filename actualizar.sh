@@ -42,8 +42,8 @@ if [ -f "$WRAPPER_PROPERTIES" ]; then
     sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip|' "$WRAPPER_PROPERTIES"
 fi
 
-# 4. Reescribir settings.gradle de forma robusta sin errores de sintaxis en Gradle
-echo "⚙️ Configurando settings.gradle de forma limpia..."
+# 4. Configurar settings.gradle permitiendo repositorios a nivel de proyecto (PREFER_PROJECT)
+echo "⚙️ Configurando settings.gradle con compatibilidad de repositorios..."
 cat << 'EOF' > settings.gradle
 pluginManagement {
     repositories {
@@ -53,7 +53,7 @@ pluginManagement {
     }
 }
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
     repositories {
         google()
         mavenCentral()
