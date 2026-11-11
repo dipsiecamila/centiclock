@@ -34,15 +34,24 @@ fi
 
 # 2. Inyectar ruta del SDK de Android
 echo "sdk.dir=$HOME/Android/Sdk" > local.properties
-# LOG: ForceJava17ToolchainAndCompileOptions for silicion limits
+# LOG: ForceExplicitJava17CompileOptions injection for silicion limits
 if [ -f "app/build.gradle" ]; then
-    sed -i '/compileOptions {/,/}/ { s/sourceCompatibility .*/sourceCompatibility JavaVersion.VERSION_17/; s/targetCompatibility .*/targetCompatibility JavaVersion.VERSION_17/; }' "app/build.gradle"
-    sed -i 's/javaCompiler = javaToolchains.compilerFor {/javaCompiler = javaToolchains.compilerFor { \/\/ /g' "app/build.gradle"
-    sed -i 's/languageVersion = JavaLanguageVersion.of(21)/languageVersion = JavaLanguageVersion.of(17)/g' "app/build.gradle"
-    sed -i 's/targetCompatibility = JavaVersion.VERSION_21/targetCompatibility = JavaVersion.VERSION_17/g' "app/build.gradle"
-    sed -i 's/sourceCompatibility = JavaVersion.VERSION_21/sourceCompatibility = JavaVersion.VERSION_17/g' "app/build.gradle"
-    sed -i 's/release.set(21)/release.set(17)/g' "app/build.gradle"
-    sed -i 's/release 21/release 17/g' "app/build.gradle"
+    if ! grep -q "compileOptions" "app/build.gradle"; then
+        echo -e "\nandroid {\n    compileOptions {\n        sourceCompatibility JavaVersion.VERSION_17\n        targetCompatibility JavaVersion.VERSION_17\n    }\n}" >> "app/build.gradle"
+    else
+        sed -i '/android {/,/}/ { 
+            /compileOptions {/,/}/ { 
+                s/sourceCompatibility .*/sourceCompatibility JavaVersion.VERSION_17/
+                s/targetCompatibility .*/targetCompatibility JavaVersion.VERSION_17/
+            }
+        }' "app/build.gradle"
+    fi
+    if ! grep -q "kotlinOptions" "app/build.gradle"; then
+        echo -e "\nandroid {\n    kotlinOptions {\n        jvmTarget = '17'\n    }\n}" >> "app/build.gradle"
+    else
+        sed -i 's/jvmTarget = "21"/jvmTarget = "17"/g' "app/build.gradle"
+        sed -i "s/jvmTarget = '21'/jvmTarget = '17'/g" "app/build.gradle"
+    fi
 fi
 
 # 3. Forzar el uso de Gradle 8.13
