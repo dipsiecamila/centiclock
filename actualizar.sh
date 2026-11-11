@@ -35,11 +35,11 @@ fi
 # 2. Inyectar ruta del SDK de Android
 echo "sdk.dir=$HOME/Android/Sdk" > local.properties
 
-# 3. Forzar el uso de una versión de Gradle compatible con Java 17 en el proyecto
+# 3. Forzar el uso de Gradle 8.13 para cumplir con el plugin de Android
 WRAPPER_PROPERTIES="gradle/wrapper/gradle-wrapper.properties"
 if [ -f "$WRAPPER_PROPERTIES" ]; then
-    echo "⚙️ Actualizando versión de Gradle para compatibilidad con Java 17..."
-    sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.5-bin.zip|' "$WRAPPER_PROPERTIES"
+    echo "⚙️ Actualizando versión de Gradle a 8.13..."
+    sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip|' "$WRAPPER_PROPERTIES"
 fi
 
 # 4. Generar debug.keystore si no existe
