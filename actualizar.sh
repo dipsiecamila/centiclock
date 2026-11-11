@@ -42,7 +42,7 @@ if [ -f "$WRAPPER_PROPERTIES" ]; then
     sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip|' "$WRAPPER_PROPERTIES"
 fi
 
-# 4. Reescribir settings.gradle de forma robusta evitando el fallo de evaluación de Capacitor
+# 4. Reescribir settings.gradle de forma robusta sin errores de sintaxis en Gradle
 echo "⚙️ Configurando settings.gradle de forma limpia..."
 cat << 'EOF' > settings.gradle
 pluginManagement {
@@ -63,17 +63,16 @@ dependencyResolutionManagement {
 rootProject.name = "centiclock"
 include ':app'
 
-// Carga segura de módulos de Capacitor si existen
 def capacitorAndroidDir = new File('../node_modules/@capacitor/android')
 if (capacitorAndroidDir.exists()) {
     include ':capacitor-android'
     project(':capacitor-android').projectDir = capacitorAndroidDir
 }
 
-aiCordovaPluginsDir = new File('../capacitor-cordova-android-plugins')
-if (aiCordovaPluginsDir.exists()) {
+def cordovaPluginsDir = new File('../capacitor-cordova-android-plugins')
+if (cordovaPluginsDir.exists()) {
     include ':capacitor-cordova-android-plugins'
-    project(':capacitor-cordova-android-plugins').projectDir = aiCordovaPluginsDir
+    project(':capacitor-cordova-android-plugins').projectDir = cordovaPluginsDir
 }
 EOF
 
