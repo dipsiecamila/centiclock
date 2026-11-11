@@ -1,0 +1,8 @@
+{
+  "name": "CentiClock - Reloj Centésimas de Minuto para android",
+  "description": "Reloj de precisión con centésimas de minuto (cmin), proyecciones temporales equivalentes a 30 minutos y alarmas con timbre 5 minutos antes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
