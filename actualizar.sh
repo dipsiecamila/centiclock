@@ -42,7 +42,13 @@ if [ -f "$WRAPPER_PROPERTIES" ]; then
     sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip|' "$WRAPPER_PROPERTIES"
 fi
 
-# 4. Configurar settings.gradle permitiendo repositorios a nivel de proyecto (PREFER_PROJECT)
+# 4. Asegurar la existencia de dependencias de Capacitor mediante npm si es necesario
+if [ ! -d "../node_modules/@capacitor/android" ]; then
+    echo "⚙️ Instalando dependencias de Capacitor faltantes..."
+    npm install --prefix .. @capacitor/android @capacitor/cli 2>/dev/null || true
+fi
+
+# 5. Configurar settings.gradle con inclusión robusta
 echo "⚙️ Configurando settings.gradle con compatibilidad de repositorios..."
 cat << 'EOF' > settings.gradle
 pluginManagement {
@@ -76,13 +82,13 @@ if (cordovaPluginsDir.exists()) {
 }
 EOF
 
-# 5. Generar debug.keystore si no existe
+# 6. Generar debug.keystore si no existe
 if [ ! -f "debug.keystore" ]; then
     echo "🔑 Generando debug.keystore de firma..."
     keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" 2>/dev/null || true
 fi
 
-# 6. Generar gradlew si no existe o actualizar permisos
+# 7. Generar gradlew si no existe o actualizar permisos
 if [ ! -f "gradlew" ]; then
     echo "⚙️  Generando wrapper de Gradle..."
     gradle wrapper || true
@@ -90,7 +96,7 @@ fi
 
 chmod +x gradlew 2>/dev/null || true
 
-# 7. Sincronizar con Git / GitHub apuntando al repositorio centiclock
+# 8. Sincronizar con Git / GitHub apuntando al repositorio centiclock
 if [ ! -d ".git" ]; then
     echo "🌱 Inicializando repositorio de Git..."
     git init
@@ -104,13 +110,13 @@ else
     git push origin master || git push origin main || true
 fi
 
-# 8. Desinstalar versión anterior en el Pixel 7a
+# 9. Desinstalar versión anterior en el Pixel 7a
 echo "🧹 Limpiando versión anterior en el Pixel 7a..."
 if [ -f "$ADB_BIN" ]; then
     "$ADB_BIN" uninstall com.aistudio.centiclock 2>/dev/null || true
 fi
 
-# 9. Compilar e instalar en el Pixel 7a
+# 10. Compilar e instalar en el Pixel 7a
 echo "📱 Compilando e instalando en tu Pixel 7a..."
 ./gradlew installDebug
 
