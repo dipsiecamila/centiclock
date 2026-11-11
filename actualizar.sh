@@ -19,6 +19,19 @@ fi
 
 cd "$PROYECTO_DIR"
 
+# Verificar si el proyecto está anidado en una subcarpeta y nivelarlo
+if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
+    SUBDIR=$(find . -maxdepth 2 \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -not -path "*/.*" | head -n 1)
+    if [ -n "$SUBDIR" ]; then
+        PARENT_DIR=$(dirname "$SUBDIR")
+        if [ "$PARENT_DIR" != "." ]; then
+            echo "📂 Normalizando estructura: moviendo archivos desde $PARENT_DIR al directorio raíz..."
+            rsync -avm --exclude='.git' "$PARENT_DIR/" ./
+            rm -rf "$PARENT_DIR"
+        fi
+    fi
+fi
+
 # 2. Inyectar ruta del SDK de Android
 echo "sdk.dir=$HOME/Android/Sdk" > local.properties
 
