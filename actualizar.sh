@@ -42,21 +42,21 @@ if [ -f "$WRAPPER_PROPERTIES" ]; then
     sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip|' "$WRAPPER_PROPERTIES"
 fi
 
-# 4. Asegurar formato correcto de settings.gradle para incluir capacitor-android
+# 4. Asegurar que settings.gradle incluya correctamente el bloque de Capacitor sin corromperse
 SETTINGS_FILE="settings.gradle"
 if [ -f "$SETTINGS_FILE" ]; then
-    if ! grep -q "capacitor-android" "$SETTINGS_FILE"; then
-        echo "⚙️ Añadiendo capacitor-android a settings.gradle..."
-        echo "" >> "$SETTINGS_FILE"
-        echo "include ':capacitor-android'" >> "$SETTINGS_FILE"
-        echo "project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/android')" >> "$SETTINGS_FILE"
+    if ! grep -q "capacitor.settings.gradle" "$SETTINGS_FILE"; then
+        echo "⚙️ Integrando configuración de Capacitor en settings.gradle..."
+        cat << 'EOF' > "$SETTINGS_FILE"
+include ':app'
+apply from: "../node_modules/@capacitor/android/capacitor.settings.gradle"
+EOF
     fi
 else
-    echo "⚙️ Creando settings.gradle básico..."
-    cat << 'EOF' > settings.gradle
+    echo "⚙️ Creando settings.gradle..."
+    cat << 'EOF' > "$SETTINGS_FILE"
 include ':app'
-include ':capacitor-android'
-project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/android')
+apply from: "../node_modules/@capacitor/android/capacitor.settings.gradle"
 EOF
 fi
 
