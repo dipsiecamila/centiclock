@@ -16,13 +16,13 @@ dependencyResolutionManagement {
 rootProject.name = "centiclock"
 include ':app'
 
-def capacitorAndroidDir = new File('../node_modules/@capacitor/android')
+def capacitorAndroidDir = new File('node_modules/@capacitor/android')
 if (capacitorAndroidDir.exists()) {
     include ':capacitor-android'
     project(':capacitor-android').projectDir = capacitorAndroidDir
 }
 
-def cordovaPluginsDir = new File('../capacitor-cordova-android-plugins')
+def cordovaPluginsDir = new File('capacitor-cordova-android-plugins')
 if (cordovaPluginsDir.exists()) {
     include ':capacitor-cordova-android-plugins'
     project(':capacitor-cordova-android-plugins').projectDir = cordovaPluginsDir
