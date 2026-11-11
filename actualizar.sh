@@ -34,24 +34,11 @@ fi
 
 # 2. Inyectar ruta del SDK de Android
 echo "sdk.dir=$HOME/Android/Sdk" > local.properties
-# LOG: ForceExplicitJava17CompileOptions injection for silicion limits
+# LOG: CleanCompileOptionsInjection for silicion limits
 if [ -f "app/build.gradle" ]; then
-    if ! grep -q "compileOptions" "app/build.gradle"; then
-        echo -e "\nandroid {\n    compileOptions {\n        sourceCompatibility JavaVersion.VERSION_17\n        targetCompatibility JavaVersion.VERSION_17\n    }\n}" >> "app/build.gradle"
-    else
-        sed -i '/android {/,/}/ { 
-            /compileOptions {/,/}/ { 
-                s/sourceCompatibility .*/sourceCompatibility JavaVersion.VERSION_17/
-                s/targetCompatibility .*/targetCompatibility JavaVersion.VERSION_17/
-            }
-        }' "app/build.gradle"
-    fi
-    if ! grep -q "kotlinOptions" "app/build.gradle"; then
-        echo -e "\nandroid {\n    kotlinOptions {\n        jvmTarget = '17'\n    }\n}" >> "app/build.gradle"
-    else
-        sed -i 's/jvmTarget = "21"/jvmTarget = "17"/g' "app/build.gradle"
-        sed -i "s/jvmTarget = '21'/jvmTarget = '17'/g" "app/build.gradle"
-    fi
+    sed -i '/kotlinOptions {/,/}/d' "app/build.gradle"
+    sed -i '/compileOptions {/,/}/d' "app/build.gradle"
+    sed -i '/android {/a \    compileOptions {\n        sourceCompatibility JavaVersion.VERSION_17\n        targetCompatibility JavaVersion.VERSION_17\n    }' "app/build.gradle"
 fi
 
 # 3. Forzar el uso de Gradle 8.13
