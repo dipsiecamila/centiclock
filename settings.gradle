@@ -20,10 +20,11 @@ def capacitorAndroidDir = new File('node_modules/@capacitor/android')
 if (capacitorAndroidDir.exists()) {
     include ':capacitor-android'
     project(':capacitor-android').projectDir = capacitorAndroidDir
-}
-
-def cordovaPluginsDir = new File('capacitor-cordova-android-plugins')
-if (cordovaPluginsDir.exists()) {
-    include ':capacitor-cordova-android-plugins'
-    project(':capacitor-cordova-android-plugins').projectDir = cordovaPluginsDir
+} else {
+    // Fallback por si la estructura usa la ruta nativa estándar
+    def nestedCapDir = new File('android/capacitor-android')
+    if (nestedCapDir.exists()) {
+        include ':capacitor-android'
+        project(':capacitor-android').projectDir = nestedCapDir
+    }
 }
