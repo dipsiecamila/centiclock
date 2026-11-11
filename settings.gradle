@@ -1,6 +1,30 @@
-include ':app'
-include ':capacitor-cordova-android-plugins'
-project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
 
-apply from: 'capacitor.settings.gradle'include ':capacitor-android'
-project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/android')
+rootProject.name = "centiclock"
+include ':app'
+
+// Carga segura de módulos de Capacitor si existen
+def capacitorAndroidDir = new File('../node_modules/@capacitor/android')
+if (capacitorAndroidDir.exists()) {
+    include ':capacitor-android'
+    project(':capacitor-android').projectDir = capacitorAndroidDir
+}
+
+aiCordovaPluginsDir = new File('../capacitor-cordova-android-plugins')
+if (aiCordovaPluginsDir.exists()) {
+    include ':capacitor-cordova-android-plugins'
+    project(':capacitor-cordova-android-plugins').projectDir = aiCordovaPluginsDir
+}

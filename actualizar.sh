@@ -42,23 +42,40 @@ if [ -f "$WRAPPER_PROPERTIES" ]; then
     sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip|' "$WRAPPER_PROPERTIES"
 fi
 
-# 4. Asegurar que settings.gradle incluya correctamente el bloque de Capacitor sin corromperse
-SETTINGS_FILE="settings.gradle"
-if [ -f "$SETTINGS_FILE" ]; then
-    if ! grep -q "capacitor.settings.gradle" "$SETTINGS_FILE"; then
-        echo "⚙️ Integrando configuración de Capacitor en settings.gradle..."
-        cat << 'EOF' > "$SETTINGS_FILE"
+# 4. Reescribir settings.gradle de forma robusta evitando el fallo de evaluación de Capacitor
+echo "⚙️ Configurando settings.gradle de forma limpia..."
+cat << 'EOF' > settings.gradle
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "centiclock"
 include ':app'
-apply from: "../node_modules/@capacitor/android/capacitor.settings.gradle"
+
+// Carga segura de módulos de Capacitor si existen
+def capacitorAndroidDir = new File('../node_modules/@capacitor/android')
+if (capacitorAndroidDir.exists()) {
+    include ':capacitor-android'
+    project(':capacitor-android').projectDir = capacitorAndroidDir
+}
+
+aiCordovaPluginsDir = new File('../capacitor-cordova-android-plugins')
+if (aiCordovaPluginsDir.exists()) {
+    include ':capacitor-cordova-android-plugins'
+    project(':capacitor-cordova-android-plugins').projectDir = aiCordovaPluginsDir
+}
 EOF
-    fi
-else
-    echo "⚙️ Creando settings.gradle..."
-    cat << 'EOF' > "$SETTINGS_FILE"
-include ':app'
-apply from: "../node_modules/@capacitor/android/capacitor.settings.gradle"
-EOF
-fi
 
 # 5. Generar debug.keystore si no existe
 if [ ! -f "debug.keystore" ]; then
