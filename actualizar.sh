@@ -152,9 +152,15 @@ else
     git push origin master || git push origin main || true
 fi
 
-# 10. Desinstalar versión anterior en el Pixel 7a
-echo "🧹 Limpiando versión anterior en el Pixel 7a..."
+# 10. Validar conexión ADB antes de proceder
+echo "🔌 Verificando conexión ADB con el Pixel 7a..."
 if [ -f "$ADB_BIN" ]; then
+    "$ADB_BIN" start-server
+    if ! "$ADB_BIN" devices | grep -qw "device"; then
+        echo "❌ ERROR: No se detecta ningún dispositivo conectado por ADB. Conecta tu Pixel 7a y autoriza la depuración USB."
+        exit 1
+    fi
+    echo "🧹 Limpiando versión anterior en el Pixel 7a..."
     "$ADB_BIN" uninstall com.aistudio.centiclock 2>/dev/null || true
 fi
 
