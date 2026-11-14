@@ -73,7 +73,20 @@ export default function App() {
     return 'ambos';
   });
 
-  const [lang, setLang] = useState<Language>('es');
+  const [lang, setLang] = useState<Language>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.lang === 'en' || parsed.lang === 'es') {
+          return parsed.lang;
+        }
+      }
+    } catch {
+      // fallback
+    }
+    return 'en';
+  });
   const [currentTime, setCurrentTime] = useState<CentiTime>(() => calculateCentiTime());
   const [audioEnabled, setAudioEnabled] = useState<boolean>(true);
 
@@ -169,15 +182,32 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
+
   const handleToggleLang = () => {
-    setLang((prev) => (prev === 'es' ? 'en' : 'es'));
+    setLang((prev) => {
+      const nextLang: Language = prev === 'en' ? 'es' : 'en';
+      try {
+        const existing = localStorage.getItem(STORAGE_KEY);
+        const parsed = existing ? JSON.parse(existing) : {};
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ ...parsed, lang: nextLang, updatedAt: Date.now() })
+        );
+      } catch {
+        // fallback
+      }
+      return nextLang;
+    });
   };
 
   const t = translations[lang];
 
   return (
     <AppErrorBoundary>
-      <div className="h-screen w-screen overflow-hidden bg-[#070a11] text-slate-100 flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200">
+      <div className="h-[100dvh] w-screen overflow-hidden bg-[#070a11] text-slate-100 flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200">
         {/* Top Navbar: Brand + Ponchar/Clock-in + Lang & Sound / Dynamic STOP */}
         <Navbar
           activeTab={activeTab}
@@ -259,14 +289,17 @@ export default function App() {
         />
 
         {/* Compact Status Footer */}
-        <footer className="border-t border-slate-800/60 py-1.5 px-4 text-[11px] text-slate-500 shrink-0">
-          <div className="max-w-6xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-              <span>USPS Dolly Clock v2.4 (Android Ready)</span>
+        <footer className="border-t border-slate-800/60 pt-1.5 pb-[calc(0.9rem+env(safe-area-inset-bottom,0px))] sm:pb-2.5 px-3 sm:px-4 text-[11px] text-slate-400 shrink-0 bg-[#070a11]">
+          <div className="max-w-6xl mx-auto flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
+              <span className="truncate font-semibold text-slate-200">
+                USPS Dolly Clock v2.5
+              </span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
               <button
+                type="button"
                 onClick={() => handleTabChange('ambos')}
                 className={`cursor-pointer transition-colors ${activeTab === 'ambos' ? 'text-emerald-400 font-bold' : 'hover:text-slate-300'}`}
               >
@@ -274,6 +307,7 @@ export default function App() {
               </button>
               <span>•</span>
               <button
+                type="button"
                 onClick={() => handleTabChange('pared')}
                 className={`cursor-pointer transition-colors ${activeTab === 'pared' ? 'text-emerald-400 font-bold' : 'hover:text-slate-300'}`}
               >
@@ -281,6 +315,7 @@ export default function App() {
               </button>
               <span>•</span>
               <button
+                type="button"
                 onClick={() => handleTabChange('tics')}
                 className={`cursor-pointer transition-colors ${activeTab === 'tics' ? 'text-emerald-400 font-bold' : 'hover:text-slate-300'}`}
               >

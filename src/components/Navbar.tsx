@@ -33,11 +33,12 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-[#0b0f17]/95 backdrop-blur-md border-b border-slate-800">
+      <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top,0px)] bg-[#0b0f17]/95 backdrop-blur-md border-b border-slate-800 shrink-0">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-2 sm:gap-3">
           {/* Brand with the EXACT green clock */}
           <div className="flex items-center gap-2 shrink-0">
             <button
+              type="button"
               onClick={() => setActiveTab('ambos')}
               className="flex items-center gap-2 text-left group cursor-pointer"
             >
@@ -54,6 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Android Hub / VS Code / ./actualizar.sh Guide Button */}
             <button
+              type="button"
               onClick={() => setShowAndroidModal(true)}
               title={lang === 'es' ? 'Opciones para Android, VS Code y GitHub' : 'Options for Android, VS Code & GitHub'}
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/40 transition-all cursor-pointer shadow-sm active:scale-95"
@@ -64,6 +66,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <button
+              type="button"
               onClick={onToggleLang}
               title={lang === 'es' ? 'Switch interface to English' : 'Cambiar interfaz a Español'}
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-black rounded-lg bg-gradient-to-b from-amber-500/20 to-amber-500/10 hover:from-amber-500/30 hover:to-amber-500/20 text-amber-300 border border-amber-500/50 transition-all cursor-pointer shadow-sm active:scale-95"
@@ -75,6 +78,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* When alerting, show a big RED pulsing STOP button right in navbar! */}
             {isAlerting ? (
               <button
+                type="button"
                 onClick={onStopAlert}
                 title={lang === 'es' ? 'Apagar alarma inmediatamente' : 'Stop alarm immediately'}
                 className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 text-xs font-black rounded-lg bg-gradient-to-b from-red-500 to-red-700 hover:from-red-400 hover:to-red-600 text-white border-2 border-red-300 transition-all cursor-pointer shadow-[0_0_15px_rgba(239,68,68,0.8)] active:scale-95 animate-pulse"
@@ -84,6 +88,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             ) : (
               <button
+                type="button"
                 onClick={handleTestChime}
                 className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer"
               >
