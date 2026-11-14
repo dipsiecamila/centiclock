@@ -15,10 +15,22 @@ import {
   startContinuousLoudAlarm,
   stopAllContinuousAlerts,
   playCentiTick,
+  setExternalAlertState,
+  subscribeAlertState,
 } from '../utils/audioAlerts';
 import { triggerBrowserNotification } from '../utils/notifications';
 import { calculateCentiTime, CentiTime } from '../utils/timeCalculations';
 import { Language, translations } from '../utils/i18n';
+import { AlarmOverlay } from './AlarmOverlay';
+import {
+  setupAlarmSystem,
+  scheduleNativeAlarms,
+  cancelNativeAlarms,
+  stopNativeAlarm,
+  getNativeActiveAlarmState,
+  acquireWakeLock,
+  releaseWakeLock,
+} from '../utils/nativeAlarms';
 
 interface CentiminuteStopwatchProps {
   audioEnabled: boolean;
@@ -120,6 +132,8 @@ export const CentiminuteStopwatch: React.FC<CentiminuteStopwatchProps> = ({
   const [preAlertFired, setPreAlertFired] = useState<boolean>(false);
   const [finalAlarmFired, setFinalAlarmFired] = useState<boolean>(false);
   const isMutedByUserRef = useRef<boolean>(false);
+  const mutedPreTargetMsRef = useRef<number | null>(null);
+  const mutedFinalTargetMsRef = useRef<number | null>(null);
   const autoSilenceTimerRef = useRef<number | null>(null);
 
   // SVG Dial dragging interaction in clock-in modal
@@ -237,17 +251,125 @@ export const CentiminuteStopwatch: React.FC<CentiminuteStopwatchProps> = ({
   }, [clockInHours, clockInTics, durationMinutes, preAlertMinutes]);
 
   const calc = computePunch();
+  const punchTargetMs = calc.punchDate.getTime();
+  const preAlertTargetMs = calc.preAlertDate.getTime();
 
-  // Reset/Silencing action
+  // Reset/Silencing action (preserves future final alarm if user is only silencing pre-alert)
   const handleMuteAlert = useCallback(() => {
-    isMutedByUserRef.current = true;
+    const nowMs = Date.now();
+    if (nowMs >= punchTargetMs) {
+      mutedFinalTargetMsRef.current = punchTargetMs;
+      isMutedByUserRef.current = true;
+      cancelNativeAlarms();
+    } else {
+      mutedPreTargetMsRef.current = preAlertTargetMs;
+    }
+
     if (autoSilenceTimerRef.current !== null) {
       clearTimeout(autoSilenceTimerRef.current);
       autoSilenceTimerRef.current = null;
     }
     stopAllContinuousAlerts();
+    stopNativeAlarm();
+    releaseWakeLock();
     setActiveAlert(null);
+  }, [punchTargetMs, preAlertTargetMs]);
+
+  // Keep local activeAlert synced if user presses STOP on global Navbar/Banner/Overlay
+  useEffect(() => {
+    return subscribeAlertState((isActive) => {
+      if (!isActive) {
+        if (autoSilenceTimerRef.current !== null) {
+          clearTimeout(autoSilenceTimerRef.current);
+          autoSilenceTimerRef.current = null;
+        }
+        setActiveAlert(null);
+      }
+    });
   }, []);
+
+  // Sync native Android background alarm state (both when triggered in background and on app resume)
+  const syncFromNativeAlarm = useCallback(async () => {
+    const state = await getNativeActiveAlarmState();
+    if (!state) return;
+
+    if (state.lastStoppedPreMs && state.lastStoppedPreMs === preAlertTargetMs) {
+      mutedPreTargetMsRef.current = preAlertTargetMs;
+      setPreAlertFired(true);
+    }
+    if (state.lastStoppedFinalMs && state.lastStoppedFinalMs === punchTargetMs) {
+      mutedFinalTargetMsRef.current = punchTargetMs;
+      setFinalAlarmFired(true);
+    }
+
+    if (state.isActive && state.type) {
+      if (state.type === 'pre') {
+        setPreAlertFired(true);
+      } else {
+        setFinalAlarmFired(true);
+      }
+      setActiveAlert(state.type);
+      // Native AlarmForegroundService is already playing MediaPlayer + vibrating:
+      // Stop any Web Audio oscillator so they don't echo, and keep global STOP UI open!
+      stopAllContinuousAlerts();
+      setExternalAlertState(true, state.type);
+    }
+  }, [preAlertTargetMs, punchTargetMs]);
+
+  // Initialize native alarm listeners + visibilitychange sync
+  useEffect(() => {
+    setupAlarmSystem({
+      onAlarmTriggered: (type) => {
+        if (type === 'pre') {
+          setPreAlertFired(true);
+        } else {
+          setFinalAlarmFired(true);
+        }
+        setActiveAlert(type);
+        stopAllContinuousAlerts();
+        setExternalAlertState(true, type);
+      },
+      onStopAlarm: (stoppedType, stoppedTargetMs) => {
+        if (stoppedType === 'pre' && stoppedTargetMs) {
+          mutedPreTargetMsRef.current = stoppedTargetMs;
+          setPreAlertFired(true);
+        } else if (stoppedType === 'final' && stoppedTargetMs) {
+          mutedFinalTargetMsRef.current = stoppedTargetMs;
+          setFinalAlarmFired(true);
+        }
+        if (autoSilenceTimerRef.current !== null) {
+          clearTimeout(autoSilenceTimerRef.current);
+          autoSilenceTimerRef.current = null;
+        }
+        setActiveAlert(null);
+      },
+    });
+
+    syncFromNativeAlarm();
+
+    const onVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        syncFromNativeAlarm();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityOrFocus);
+    window.addEventListener('focus', onVisibilityOrFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityOrFocus);
+      window.removeEventListener('focus', onVisibilityOrFocus);
+    };
+  }, [syncFromNativeAlarm]);
+
+  // Sync background exact native alarms with Android ONLY when actual target timestamps change
+  useEffect(() => {
+    scheduleNativeAlarms({
+      preAlertMs: preAlertTargetMs,
+      punchMs: punchTargetMs,
+      preAlertMinutes,
+      punchCentiFormatted: calc.punchCentiFormatted,
+      lang,
+    });
+  }, [preAlertTargetMs, punchTargetMs, preAlertMinutes, calc.punchCentiFormatted, lang]);
 
   // Intelligent alarm recalculation and silencing logic:
   const reevaluateAlerts = useCallback((
@@ -284,6 +406,8 @@ export const CentiminuteStopwatch: React.FC<CentiminuteStopwatchProps> = ({
     const remaining = targetMs - nowMs;
 
     isMutedByUserRef.current = false;
+    mutedPreTargetMsRef.current = null;
+    mutedFinalTargetMsRef.current = null;
     if (autoSilenceTimerRef.current !== null) {
       clearTimeout(autoSilenceTimerRef.current);
       autoSilenceTimerRef.current = null;
@@ -294,21 +418,26 @@ export const CentiminuteStopwatch: React.FC<CentiminuteStopwatchProps> = ({
       setFinalAlarmFired(false);
       if (activeAlert === 'final') {
         stopAllContinuousAlerts();
+        stopNativeAlarm();
+        releaseWakeLock();
         setActiveAlert(null);
       }
     }
 
     // 2. Pre-alert check:
-    if (nowMs < preAlertMs || remaining <= 0) {
+    if (newPreAlert <= 0 || nowMs < preAlertMs || remaining <= 0) {
       setPreAlertFired(false);
       if (activeAlert === 'pre') {
         stopAllContinuousAlerts();
+        stopNativeAlarm();
+        releaseWakeLock();
         setActiveAlert(null);
       }
-    } else if (nowMs >= preAlertMs && remaining > 0) {
+    } else if (newPreAlert > 0 && nowMs >= preAlertMs && remaining > 0) {
       if (activeAlert !== 'pre' && !preAlertFired) {
         setPreAlertFired(true);
         setActiveAlert('pre');
+        acquireWakeLock();
         startContinuousPreAlert();
         triggerBrowserNotification(
           lang === 'es' ? '🔔 ¡TIMBRE DE AVISO!' : '🔔 PRE-ALERT WARNING!',
@@ -324,8 +453,8 @@ export const CentiminuteStopwatch: React.FC<CentiminuteStopwatchProps> = ({
   // Alert check & 60-second auto-shutoff (DOES NOT auto-restart when finished, stays until manual restart)
   useEffect(() => {
     const nowMs = Date.now();
-    const targetMs = calc.punchDate.getTime();
-    const preAlertMs = calc.preAlertDate.getTime();
+    const targetMs = punchTargetMs;
+    const preAlertMs = preAlertTargetMs;
     const remaining = targetMs - nowMs;
 
     // Silence alerts if time recalculation put the events in the future
@@ -333,12 +462,16 @@ export const CentiminuteStopwatch: React.FC<CentiminuteStopwatchProps> = ({
       if (finalAlarmFired) setFinalAlarmFired(false);
       if (activeAlert === 'final') {
         stopAllContinuousAlerts();
+        stopNativeAlarm();
+        releaseWakeLock();
         setActiveAlert(null);
       }
       if (nowMs < preAlertMs) {
         if (preAlertFired) setPreAlertFired(false);
         if (activeAlert === 'pre') {
           stopAllContinuousAlerts();
+          stopNativeAlarm();
+          releaseWakeLock();
           setActiveAlert(null);
         }
       }
@@ -347,10 +480,17 @@ export const CentiminuteStopwatch: React.FC<CentiminuteStopwatchProps> = ({
 
     if (isMutedByUserRef.current) return;
 
-    // Trigger pre-alert
-    if (nowMs >= preAlertMs && !preAlertFired && remaining > 0) {
+    // Trigger pre-alert (only if preAlertMinutes > 0 and not already muted for this target)
+    if (
+      preAlertMinutes > 0
+      && nowMs >= preAlertMs
+      && !preAlertFired
+      && remaining > 0
+      && mutedPreTargetMsRef.current !== preAlertMs
+    ) {
       setPreAlertFired(true);
       setActiveAlert('pre');
+      acquireWakeLock();
       startContinuousPreAlert();
       triggerBrowserNotification(
         lang === 'es' ? '🔔 ¡TIMBRE DE AVISO!' : '🔔 PRE-ALERT WARNING!',
@@ -363,10 +503,15 @@ export const CentiminuteStopwatch: React.FC<CentiminuteStopwatchProps> = ({
       }, 60000);
     }
 
-    // Trigger final alarm
-    if (nowMs >= targetMs && !finalAlarmFired) {
+    // Trigger final alarm (unless already muted for this exact punch target)
+    if (
+      nowMs >= targetMs
+      && !finalAlarmFired
+      && mutedFinalTargetMsRef.current !== targetMs
+    ) {
       setFinalAlarmFired(true);
       setActiveAlert('final');
+      acquireWakeLock();
       startContinuousLoudAlarm();
       triggerBrowserNotification(
         lang === 'es' ? '🚨 ¡HORA DE PONCHAR!' : '🚨 TIME TO PUNCH OUT!',
@@ -378,7 +523,7 @@ export const CentiminuteStopwatch: React.FC<CentiminuteStopwatchProps> = ({
         handleMuteAlert();
       }, 60000);
     }
-  }, [currentTime, calc, preAlertFired, finalAlarmFired, preAlertMinutes, activeAlert, handleMuteAlert, lang]);
+  }, [currentTime, punchTargetMs, preAlertTargetMs, calc.punchCentiFormatted, preAlertFired, finalAlarmFired, preAlertMinutes, activeAlert, handleMuteAlert, lang]);
 
   // Picture / Reset Button: Anchors clock-in to current instant, hides button, triggers poionon bounce
   const handleResetToNow = () => {
@@ -594,17 +739,28 @@ export const CentiminuteStopwatch: React.FC<CentiminuteStopwatchProps> = ({
 
   return (
     <div className="w-full h-full max-h-full flex flex-col justify-start max-w-5xl mx-auto px-1 sm:px-3 pt-0 pb-1 select-none overflow-hidden">
-      {/* ALERTA / PRE-ALARMA */}
+      {/* Full-screen high-priority Alarm Overlay with giant STOP button */}
+      <AlarmOverlay
+        type={activeAlert}
+        punchCentiFormatted={calc.punchCentiFormatted}
+        punchTraditional={calc.punchTraditional}
+        remainingFormatted={calc.remainingFormatted}
+        preAlertMinutes={preAlertMinutes}
+        onStop={handleMuteAlert}
+        lang={lang}
+      />
+
+      {/* ALERTA / PRE-ALARMA Top inline banner */}
       {activeAlert && (
         <div className="shrink-0 mb-1 flex items-center justify-center">
           <button
             type="button"
             onClick={handleMuteAlert}
-            className="w-full sm:w-auto py-2 px-6 bg-gradient-to-b from-[#d6effc] via-[#b6e4fa] to-[#80c8f5] hover:from-[#e4f4fd] hover:to-[#92d3f7] active:from-[#b0def8] active:to-[#6bbfe8] text-slate-950 font-sans font-black text-xs sm:text-sm border-2 border-[#3c7fb1] rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_4px_0_#2b72a6,0_6px_8px_rgba(0,0,0,0.4)] cursor-pointer flex items-center justify-center gap-2 select-none transition-all active:translate-y-0.5"
+            className="w-full sm:w-auto py-2.5 px-6 bg-gradient-to-b from-red-500 via-red-600 to-red-700 hover:from-red-400 hover:to-red-600 active:scale-95 text-white font-sans font-black text-sm border-2 border-red-300 rounded-2xl shadow-[0_4px_12px_rgba(239,68,68,0.5)] cursor-pointer flex items-center justify-center gap-2 select-none transition-all animate-pulse"
           >
-            <VolumeX className="w-4 h-4 text-slate-900 stroke-[2.5]" />
+            <VolumeX className="w-5 h-5 text-white stroke-[2.5]" />
             <span>
-              {t.silenceRemaining} {calc.remainingFormatted}
+              🛑 {t.silenceRemaining || 'DETENER / STOP'} ({calc.remainingFormatted})
             </span>
           </button>
         </div>
@@ -939,15 +1095,17 @@ export const CentiminuteStopwatch: React.FC<CentiminuteStopwatchProps> = ({
                 </span>
               </div>
               <span className="text-xs sm:text-sm font-black text-amber-300 font-sans tracking-wide whitespace-nowrap">
-                {lang === 'es'
-                  ? `Alarma ${preAlertMinutes} Minutos antes`
-                  : `Alarm ${preAlertMinutes} Minutes before`}
+                {preAlertMinutes === 0
+                  ? t.alarmExactTime
+                  : (lang === 'es'
+                    ? `Alarma ${preAlertMinutes} Minutos antes`
+                    : `Alarm ${preAlertMinutes} Minutes before`)}
               </span>
             </div>
 
-            {/* Botones numéricos 1, 3, 5, 10 en la misma línea con acabado amarillo/dorado */}
+            {/* Botones numéricos 0, 1, 3, 5, 10 en la misma línea con acabado amarillo/dorado */}
             <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-              {[1, 3, 5, 10].map((mins) => (
+              {[0, 1, 3, 5, 10].map((mins) => (
                 <button
                   key={mins}
                   type="button"

@@ -1,171 +1,105 @@
 #!/bin/bash
+# ==============================================================================
+# USPS Dolly Clock - Actualizador para Visual Studio Code y GitHub (Sin Android Studio)
+# ==============================================================================
+# Este script está diseñado especialmente para usuarios de Visual Studio Code.
+# No necesitas instalar Android Studio: al subir tus cambios a GitHub,
+# GitHub compilará automáticamente el archivo APK listo para tu teléfono.
+# ==============================================================================
+
 set -e
 
-PROYECTO_DIR="$HOME/dsrrllo/centiclock"
-DESCARGAS_DIR="$HOME/dsrrllo"
-ADB_BIN="$HOME/Android/Sdk/platform-tools/adb"
+# Colores para la terminal de VS Code
+CYAN='\033[0;36m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+PURPLE='\033[0;35m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
 
-# 1. Buscar el archivo ZIP más reciente de centiclock en descargas
-ZIP_FILE=$(ls -t "$DESCARGAS_DIR"/*centiclock*.zip 2>/dev/null | head -n 1)
+echo ""
+echo -e "${PURPLE}${BOLD}================================================================${NC}"
+echo -e "${CYAN}${BOLD}   ⏱️  USPS DOLLY CLOCK - ACTUALIZACIÓN DESDE VISUAL STUDIO CODE  ${NC}"
+echo -e "${PURPLE}${BOLD}================================================================${NC}"
+echo ""
 
-if [ -n "$ZIP_FILE" ]; then
-    echo "📦 Procesando archivo ZIP: $ZIP_FILE..."
-    mkdir -p "$PROYECTO_DIR"
-    unzip -o "$ZIP_FILE" -d "$PROYECTO_DIR"
-    rm "$ZIP_FILE"
+# 1. Verificar dependencias de Node.js
+if [ ! -d "node_modules" ]; then
+  echo -e "${YELLOW}⚙️  [1/4] Instalando dependencias de Node.js en VS Code...${NC}"
+  npm install
 else
-    echo "ℹ️ No hay ZIP nuevo en $DESCARGAS_DIR, procesando estado actual en $PROYECTO_DIR..."
+  echo -e "${GREEN}✓ [1/4] Dependencias verificadas.${NC}"
 fi
 
-cd "$PROYECTO_DIR"
+# 2. Generar iconos del reloj verde y compilar el frontend web
+echo ""
+echo -e "${CYAN}🎨 [2/4] Generando iconos oficiales y tonos nativos de alarma...${NC}"
+node scripts/generate-icons.js
+node scripts/generate-alarm-sounds.js
+echo -e "${CYAN}🔨 Compilando frontend web (Vite + Tailwind)...${NC}"
+npm run build
+echo -e "${GREEN}✓ Archivos compilados en la carpeta dist/${NC}"
 
-# Verificar si el proyecto está anidado en una subcarpeta y nivelarlo
-if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
-    SUBDIR=$(find . -maxdepth 2 \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -not -path "*/.*" | head -n 1)
-    if [ -n "$SUBDIR" ]; then
-        PARENT_DIR=$(dirname "$SUBDIR")
-        if [ "$PARENT_DIR" != "." ]; then
-            echo "📂 Normalizando estructura: moviendo archivos desde $PARENT_DIR al directorio raíz..."
-            rsync -avm --exclude='.git' "$PARENT_DIR/" ./
-            rm -rf "$PARENT_DIR"
-        fi
-    fi
-fi
+# 3. Sincronizar activos con el contenedor Android de Capacitor
+echo ""
+echo -e "${CYAN}📱 [3/4] Sincronizando archivos con el proyecto Android...${NC}"
+npx cap sync android
+echo -e "${GREEN}✓ Todo listo en la carpeta android/ sin necesidad de Android Studio!${NC}"
 
-# 2. Inyectar ruta del SDK de Android
-echo "sdk.dir=$HOME/Android/Sdk" > local.properties
-# LOG: CleanCompileOptionsInjection for silicion limits
-if [ -f "app/build.gradle" ]; then
-    sed -i '/kotlinOptions {/,/}/d' "app/build.gradle"
-    sed -i '/compileOptions {/,/}/d' "app/build.gradle"
-    sed -i '/android {/a \    compileOptions {\n        sourceCompatibility JavaVersion.VERSION_17\n        targetCompatibility JavaVersion.VERSION_17\n    }' "app/build.gradle"
-fi
+# 4. Gestión de Git y subida a GitHub
+echo ""
+echo -e "${CYAN}🐙 [4/4] Subiendo a GitHub para compilación automática del APK...${NC}"
 
-# 3. Forzar el uso de Gradle 8.13
-WRAPPER_PROPERTIES="gradle/wrapper/gradle-wrapper.properties"
-if [ -f "$WRAPPER_PROPERTIES" ]; then
-    echo "⚙️ Actualizando versión de Gradle a 8.13..."
-    sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip|' "$WRAPPER_PROPERTIES"
-fi
+COMMIT_MSG="${1:-Actualizar USPS Dolly Clock para teléfono}"
 
-# 4. Asegurar dependencias de Capacitor (verificando la subcarpeta real /capacitor)
-CAP_ANDROID_PATH="node_modules/@capacitor/android/capacitor"
-if [ ! -d "$CAP_ANDROID_PATH" ]; then
-    echo "⚙️ Instalando @capacitor/android en $PROYECTO_DIR..."
-    [ ! -f "package.json" ] && npm init -y >/dev/null
-    npm install @capacitor/android @capacitor/core --legacy-peer-deps
-fi
-# LOG: PatchJava21To17 compatibility downgrade for silicion limits
-if [ -f "$CAP_ANDROID_PATH/build.gradle" ]; then
-    sed -i 's/VERSION_21/VERSION_17/g' "$CAP_ANDROID_PATH/build.gradle"
-    sed -i 's/compatibility = 21/compatibility = 17/g' "$CAP_ANDROID_PATH/build.gradle"
-    sed -i 's/sourceCompatibility = 21/sourceCompatibility = 17/g' "$CAP_ANDROID_PATH/build.gradle"
-    sed -i 's/targetCompatibility = 21/targetCompatibility = 17/g' "$CAP_ANDROID_PATH/build.gradle"
-fi
-
-# Verificación dura: si no existe el build.gradle de Capacitor, detenerse aquí con mensaje claro
-if [ ! -f "$CAP_ANDROID_PATH/build.gradle" ]; then
-    echo "❌ ERROR FATAL: No se encontró $CAP_ANDROID_PATH/build.gradle tras npm install."
-    exit 1
-fi
-
-# Crear estructura mínima válida para capacitor-cordova-android-plugins si no existe
-if [ ! -f "capacitor-cordova-android-plugins/build.gradle" ]; then
-    mkdir -p "capacitor-cordova-android-plugins/src/main/java"
-    cat << 'EOF' > capacitor-cordova-android-plugins/build.gradle
-apply plugin: 'com.android.library'
-android {
-    namespace "capacitor.cordova.android.plugins"
-    compileSdk 34
-    defaultConfig {
-        minSdk 22
-    }
-}
-EOF
-fi
-
-# 5. Configurar settings.gradle apuntando a las rutas exactas
-echo "⚙️ Configurando settings.gradle..."
-cat << 'EOF' > settings.gradle
-pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
-}
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
-
-rootProject.name = "centiclock"
-include ':app'
-
-include ':capacitor-android'
-project(':capacitor-android').projectDir = new File('node_modules/@capacitor/android/capacitor')
-
-include ':capacitor-cordova-android-plugins'
-project(':capacitor-cordova-android-plugins').projectDir = new File('capacitor-cordova-android-plugins')
-EOF
-
-# 6. Generar debug.keystore si no existe
-if [ ! -f "debug.keystore" ]; then
-    echo "🔑 Generando debug.keystore de firma..."
-    keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" 2>/dev/null || true
-fi
-
-# 7. Generar gradlew si no existe o actualizar permisos
-if [ ! -f "gradlew" ]; then
-    echo "⚙️ Generando wrapper de Gradle..."
-    gradle wrapper || true
-fi
-
-chmod +x gradlew 2>/dev/null || true
-
-# 8. Evitar subir node_modules y carpetas de compilación pesadas a GitHub
-if [ ! -f ".gitignore" ]; then
-    cat << 'EOF' > .gitignore
-node_modules/
-.gradle/
-build/
-app/build/
-local.properties
-*.keystore
-EOF
-fi
-
-# 9. Sincronizar con Git / GitHub apuntando al repositorio centiclock
-if [ ! -d ".git" ]; then
-    echo "🌱 Inicializando repositorio de Git..."
-    git init
+if command -v git &> /dev/null; then
+  if [ -d ".git" ]; then
     git add .
-    git commit -m "Initial commit desde AI Studio: centiclock"
-    gh repo create centiclock --public --source=. --push || true
+    if git diff-index --quiet HEAD --; then
+      echo -e "${YELLOW}No hay cambios nuevos pendientes de commit.${NC}"
+    else
+      git commit -m "$COMMIT_MSG"
+      echo -e "${GREEN}✓ Commit guardado: \"$COMMIT_MSG\"${NC}"
+    fi
+
+    # Subir a la rama activa
+    if git remote | grep -q 'origin'; then
+      CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
+      echo -e "${YELLOW}Subiendo cambios a GitHub (${CURRENT_BRANCH})...${NC}"
+      git push origin "$CURRENT_BRANCH"
+      echo ""
+      echo -e "${GREEN}${BOLD}================================================================${NC}"
+      echo -e "${GREEN}${BOLD}  🚀 ¡LISTO! GITHUB ESTÁ COMPILANDO TU APK AUTOMÁTICAMENTE        ${NC}"
+      echo -e "${GREEN}${BOLD}================================================================${NC}"
+      echo -e "Como usas ${BOLD}Visual Studio Code${NC} y no tienes Android Studio, tu APK"
+      echo -e "se genera en los servidores de GitHub:"
+      echo ""
+      echo -e "  1. Entra a tu repositorio en GitHub desde tu teléfono o computadora."
+      echo -e "  2. Haz clic en la pestaña ${YELLOW}'Actions'${NC}."
+      echo -e "  3. Abre la última ejecución verde: ${BOLD}'Compilar APK Android'${NC}."
+      echo -e "  4. En la parte inferior descarga el archivo: ${BOLD}${GREEN}USPS-Dolly-Clock-APK${NC}."
+      echo -e "  5. Pásalo o ábrelo en tu teléfono Android y pulsa 'Instalar'."
+      echo ""
+    else
+      echo -e "${YELLOW}ℹ️  Aún no has vinculado tu repositorio remoto de GitHub.${NC}"
+      echo -e "   Para conectarlo con GitHub desde la terminal de VS Code ejecuta:"
+      echo -e "   ${BOLD}git remote add origin https://github.com/TU_USUARIO/TU_REPOSITORIO.git${NC}"
+      echo -e "   ${BOLD}git branch -M main${NC}"
+      echo -e "   ${BOLD}git push -u origin main${NC}"
+    fi
+  else
+    echo -e "${YELLOW}ℹ️  Git no está inicializado en esta carpeta.${NC}"
+    echo -e "   Para inicializarlo ejecuta en tu terminal de VS Code:"
+    echo -e "   ${BOLD}git init && git add . && git commit -m \"Primer commit Android\"${NC}"
+  fi
 else
-    echo "🚀 Guardando nueva versión en Git y subiendo a GitHub (centiclock)..."
-    git add .
-    git commit -m "Actualización automática centiclock: $(date '+%Y-%m-%d %H:%M:%S')" || true
-    git push origin master || git push origin main || true
+  echo -e "${RED}Git no está instalado o no está en el PATH.${NC}"
 fi
 
-# 10. Validar conexión ADB antes de proceder
-echo "🔌 Verificando conexión ADB con el Pixel 7a..."
-if [ -f "$ADB_BIN" ]; then
-    "$ADB_BIN" start-server
-    if ! "$ADB_BIN" devices | grep -qw "device"; then
-        echo "❌ ERROR: No se detecta ningún dispositivo conectado por ADB. Conecta tu Pixel 7a y autoriza la depuración USB."
-        exit 1
-    fi
-    echo "🧹 Limpiando versión anterior en el Pixel 7a..."
-    "$ADB_BIN" uninstall com.aistudio.centiclock 2>/dev/null || true
-fi
-
-# 11. Compilar e instalar en el Pixel 7a
-echo "📱 Compilando e instalando en tu Pixel 7a..."
-./gradlew installDebug
-
-echo "✅ ¡PROCESO COMPLETADO EXITOSAMENTE! La app centiclock está actualizada en tu Pixel 7a y en GitHub."
+echo ""
+echo -e "${CYAN}💡 OTRAS FORMAS DE USAR EN TU TELÉFONO DESDE VS CODE:${NC}"
+echo -e "  • ${BOLD}Forma Inmediata (PWA Offline):${NC} Ejecuta ${YELLOW}npm run dev${NC} o abre tu URL en Chrome de Android"
+echo -e "    y toca 'Agregar a la pantalla principal' / 'Instalar app'."
+echo -e "  • Funciona al 100% sin conexión a internet y se comporta exactamente igual a una app nativa."
+echo ""

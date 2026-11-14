@@ -4,6 +4,7 @@
  * Navegación por clic en el reloj: Ponchar -> Pared -> Tics -> Ponchar.
  * Pantalla única compacta sin scroll.
  * Persistencia en localStorage y ciclo de reloj optimizado.
+ * Sistema global de alarmas y parada de emergencia (STOP).
  */
 
 import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
@@ -12,6 +13,9 @@ import { CentiClockDisplay } from './components/CentiClockDisplay';
 import { CentiminuteStopwatch, STORAGE_KEY } from './components/CentiminuteStopwatch';
 import { calculateCentiTime, CentiTime } from './utils/timeCalculations';
 import { Language, translations } from './utils/i18n';
+import { stopAllContinuousAlerts, subscribeAlertState } from './utils/audioAlerts';
+import { AlarmOverlay } from './components/AlarmOverlay';
+import { releaseWakeLock, stopNativeAlarm } from './utils/nativeAlarms';
 
 // Error boundary to prevent white-screen crashes under any circumstance
 interface Props {
@@ -35,13 +39,13 @@ class AppErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div className="h-screen w-screen bg-[#070a11] text-slate-100 flex flex-col items-center justify-center p-6 text-center space-y-4">
-          <div className="text-xl font-bold text-amber-400">USPS Dolly Clock</div>
+          <div className="text-xl font-bold text-emerald-400">USPS Dolly Clock</div>
           <p className="text-sm text-slate-400 max-w-md">
             Ocurrió un reinicio preventivo. Haz clic en el botón para reanudar con tus datos intactos.
           </p>
           <button
             onClick={() => this.setState({ hasError: false })}
-            className="px-5 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-sm cursor-pointer shadow-lg active:scale-95"
+            className="px-5 py-2.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-sm cursor-pointer shadow-lg active:scale-95"
           >
             Reanudar Reloj
           </button>
@@ -73,6 +77,25 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState<CentiTime>(() => calculateCentiTime());
   const [audioEnabled, setAudioEnabled] = useState<boolean>(true);
 
+  // Global Alert State (Listening to audioAlerts directly)
+  const [globalAlert, setGlobalAlert] = useState<{
+    isActive: boolean;
+    type: 'pre' | 'final' | 'test' | null;
+  }>({ isActive: false, type: null });
+
+  useEffect(() => {
+    return subscribeAlertState((isActive, type) => {
+      setGlobalAlert({ isActive, type });
+    });
+  }, []);
+
+  const handleGlobalStopAlert = () => {
+    stopAllContinuousAlerts();
+    stopNativeAlarm();
+    releaseWakeLock();
+    setGlobalAlert({ isActive: false, type: null });
+  };
+
   // Persistent settings for punch clock: initialized from localStorage
   const [durationMinutes, setDurationMinutes] = useState<number>(() => {
     try {
@@ -94,7 +117,7 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (typeof parsed.preAlertMinutes === 'number' && parsed.preAlertMinutes > 0) {
+        if (typeof parsed.preAlertMinutes === 'number' && parsed.preAlertMinutes >= 0) {
           return parsed.preAlertMinutes;
         }
       }
@@ -127,13 +150,23 @@ export default function App() {
     }
   };
 
-  // Lightweight 250ms interval (4 times per second)
+  // Lightweight 250ms interval + immediate sync when returning from background
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(calculateCentiTime());
-    }, 250);
+    const updateNow = () => setCurrentTime(calculateCentiTime());
+    const timer = setInterval(updateNow, 250);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        updateNow();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', updateNow);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', updateNow);
+    };
   }, []);
 
   const handleToggleLang = () => {
@@ -144,8 +177,8 @@ export default function App() {
 
   return (
     <AppErrorBoundary>
-      <div className="h-screen w-screen overflow-hidden bg-[#070a11] text-slate-100 flex flex-col selection:bg-amber-500/30 selection:text-amber-200">
-        {/* Top Navbar: Brand + Ponchar/Clock-in + Lang & Sound */}
+      <div className="h-screen w-screen overflow-hidden bg-[#070a11] text-slate-100 flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200">
+        {/* Top Navbar: Brand + Ponchar/Clock-in + Lang & Sound / Dynamic STOP */}
         <Navbar
           activeTab={activeTab}
           setActiveTab={handleTabChange}
@@ -153,12 +186,31 @@ export default function App() {
           setAudioEnabled={setAudioEnabled}
           lang={lang}
           onToggleLang={handleToggleLang}
+          isAlerting={globalAlert.isActive}
+          onStopAlert={handleGlobalStopAlert}
         />
+
+        {/* Global Emergency Stop Header Banner: Shows immediately when ANY sound or alarm is ringing */}
+        {globalAlert.isActive && (
+          <div className="shrink-0 w-full bg-red-600 text-white px-4 py-2 flex items-center justify-between z-50 animate-pulse shadow-[0_4px_20px_rgba(239,68,68,0.8)] border-b-2 border-red-300">
+            <div className="flex items-center gap-2 font-black text-xs sm:text-sm tracking-wide uppercase">
+              <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping" />
+              <span>{lang === 'es' ? '🚨 ¡TIMBRE / ALARMA SONANDO!' : '🚨 ALARM IS RINGING!'}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleGlobalStopAlert}
+              className="px-5 py-2 rounded-xl bg-white hover:bg-slate-100 active:scale-95 text-red-700 font-black text-xs sm:text-sm uppercase cursor-pointer shadow-lg transition-all"
+            >
+              🛑 {lang === 'es' ? 'APAGAR YA / STOP' : 'STOP ALARM NOW'}
+            </button>
+          </div>
+        )}
 
         {/* Main Single-Screen Content (Shifted slightly upward to maximize clock space) */}
         <main className="flex-1 overflow-hidden flex flex-col justify-start items-center px-2 sm:px-4 pt-0.5 sm:pt-1 pb-1">
-          {/* 1. Ambos (Default: Ponchar / Clock-in Unified Screen) */}
-          {activeTab === 'ambos' && (
+          {/* 1. Ambos (Default: Ponchar / Clock-in Unified Screen - kept mounted so alarms always tick) */}
+          <div className={activeTab === 'ambos' ? 'w-full h-full flex flex-col justify-start items-center' : 'hidden'}>
             <CentiminuteStopwatch
               audioEnabled={audioEnabled}
               lang={lang}
@@ -169,7 +221,7 @@ export default function App() {
               setPreAlertMinutes={setPreAlertMinutes}
               onClockClick={handleClockClickCycle}
             />
-          )}
+          </div>
 
           {/* 2. Pared (Traditional Wall Clock) */}
           {activeTab === 'pared' && (
@@ -194,17 +246,46 @@ export default function App() {
           )}
         </main>
 
+        {/* Global Full-Screen Alarm Overlay with Giant STOP button - Active on ALL tabs */}
+        <AlarmOverlay
+          type={
+            globalAlert.type === 'test' || activeTab !== 'ambos'
+              ? globalAlert.type
+              : null
+          }
+          onStop={handleGlobalStopAlert}
+          lang={lang}
+          preAlertMinutes={preAlertMinutes}
+        />
+
         {/* Compact Status Footer */}
         <footer className="border-t border-slate-800/60 py-1.5 px-4 text-[11px] text-slate-500 shrink-0">
           <div className="max-w-6xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-400">USPS Dolly</span>
-              <span>·</span>
-              <span>1 h = 100 tics = 60 min</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <span>USPS Dolly Clock v2.4 (Android Ready)</span>
             </div>
-
-            <div className="font-mono text-slate-500">
-              {lang === 'es' ? 'Ponchar · Pared · Tics' : 'Clock-in · Wall · Tics'}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => handleTabChange('ambos')}
+                className={`cursor-pointer transition-colors ${activeTab === 'ambos' ? 'text-emerald-400 font-bold' : 'hover:text-slate-300'}`}
+              >
+                {t.tabBoth}
+              </button>
+              <span>•</span>
+              <button
+                onClick={() => handleTabChange('pared')}
+                className={`cursor-pointer transition-colors ${activeTab === 'pared' ? 'text-emerald-400 font-bold' : 'hover:text-slate-300'}`}
+              >
+                {t.tabWall}
+              </button>
+              <span>•</span>
+              <button
+                onClick={() => handleTabChange('tics')}
+                className={`cursor-pointer transition-colors ${activeTab === 'tics' ? 'text-emerald-400 font-bold' : 'hover:text-slate-300'}`}
+              >
+                {t.tabTics}
+              </button>
             </div>
           </div>
         </footer>

@@ -8,11 +8,43 @@ let audioCtx: AudioContext | null = null;
 let masterCompressor: DynamicsCompressorNode | null = null;
 let masterGain: GainNode | null = null;
 let activeAlertInterval: number | null = null;
-let currentAlertType: 'pre' | 'final' | null = null;
+let currentAlertType: 'pre' | 'final' | 'test' | null = null;
+let externalAlertActive = false;
 
 // Track all scheduled oscillators and timeouts so they can be canceled instantly
 const activeOscillators: OscillatorNode[] = [];
 const activeTimeouts: number[] = [];
+
+// Event subscribers for global alarm state
+type AlertSubscriber = (isActive: boolean, type: 'pre' | 'final' | 'test' | null) => void;
+const subscribers = new Set<AlertSubscriber>();
+
+export function subscribeAlertState(callback: AlertSubscriber): () => void {
+  subscribers.add(callback);
+  callback(isAlertActive(), currentAlertType);
+  return () => {
+    subscribers.delete(callback);
+  };
+}
+
+function notifySubscribers(isActive: boolean, type: 'pre' | 'final' | 'test' | null): void {
+  subscribers.forEach((cb) => {
+    try {
+      cb(isActive, type);
+    } catch {
+      // safe fallback
+    }
+  });
+}
+
+export function setExternalAlertState(
+  isActive: boolean,
+  type: 'pre' | 'final' | 'test' | null
+): void {
+  externalAlertActive = isActive;
+  currentAlertType = isActive ? type : null;
+  notifySubscribers(isActive || activeAlertInterval !== null, currentAlertType);
+}
 
 function getAudioContext(): AudioContext {
   if (!audioCtx) {
@@ -168,6 +200,7 @@ export function startContinuousPreAlert(): void {
   } catch {
     // ignore
   }
+  notifySubscribers(true, 'pre');
   playPreAlertBurst();
   activeAlertInterval = window.setInterval(() => {
     playPreAlertBurst();
@@ -188,6 +221,7 @@ export function startContinuousLoudAlarm(): void {
   } catch {
     // ignore
   }
+  notifySubscribers(true, 'final');
   playLoudAlarmBurst();
   activeAlertInterval = window.setInterval(() => {
     playLoudAlarmBurst();
@@ -203,6 +237,7 @@ export function stopAllContinuousAlerts(): void {
     clearInterval(activeAlertInterval);
     activeAlertInterval = null;
   }
+  externalAlertActive = false;
   currentAlertType = null;
 
   // 2. Limpiar todos los timeouts pendientes
@@ -242,25 +277,48 @@ export function stopAllContinuousAlerts(): void {
       // safe fallback
     }
   }
+
+  // 6. Notificar a todos los componentes que el sonido se apagó
+  notifySubscribers(false, null);
 }
 
-export function getCurrentAlertType(): 'pre' | 'final' | null {
+export function getCurrentAlertType(): 'pre' | 'final' | 'test' | null {
   return currentAlertType;
 }
 
 export function isAlertActive(): boolean {
-  return activeAlertInterval !== null;
+  return externalAlertActive || activeAlertInterval !== null || currentAlertType !== null;
 }
 
-// Single preview shots for testing buttons
+// Single preview shots for testing buttons (Now also triggers STOP visibility!)
 export function playPreAlarmChime(): void {
   stopAllContinuousAlerts();
+  currentAlertType = 'test';
+  notifySubscribers(true, 'test');
   playPreAlertBurst();
+
+  const tId = window.setTimeout(() => {
+    if (currentAlertType === 'test') {
+      currentAlertType = null;
+      notifySubscribers(false, null);
+    }
+  }, 2200);
+  activeTimeouts.push(tId);
 }
 
 export function playFinalAlarmChime(): void {
   stopAllContinuousAlerts();
+  currentAlertType = 'test';
+  notifySubscribers(true, 'test');
   playLoudAlarmBurst();
+
+  const tId = window.setTimeout(() => {
+    if (currentAlertType === 'test') {
+      currentAlertType = null;
+      notifySubscribers(false, null);
+    }
+  }, 2200);
+  activeTimeouts.push(tId);
 }
 
 export function playCentiTick(): void {
